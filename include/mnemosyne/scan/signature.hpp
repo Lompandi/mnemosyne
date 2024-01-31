@@ -113,11 +113,11 @@ namespace mnem {
         constexpr signature(const signature&) noexcept = default;
 
         constexpr signature(const sig_storage& sig) : // NOLINT(google-explicit-constructor)
-            base_t({ sig.container() }) {}
+            base_t({ std::span<const sig_element>(sig.container()) }) {}
 
         template <size_t N>
         constexpr signature(const static_sig_storage<N>& sig) noexcept : // NOLINT(google-explicit-constructor)
-                base_t({ sig.container() }) {}
+            base_t({ std::span<const sig_element>(sig.container()) }) {}
 
         constexpr explicit signature(std::span<const sig_element> span) noexcept : base_t(span) {}
 
