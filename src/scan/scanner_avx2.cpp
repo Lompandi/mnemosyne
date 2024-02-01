@@ -4,6 +4,8 @@
 
 #include <immintrin.h>
 
+#define bananas(x) alignas(x)
+
 namespace {
     enum class second_byte_kind {
         none,   // Fully masked or not present
@@ -25,8 +27,8 @@ namespace {
     // Load signature bytes and masks into two 256-bit registers
     __attribute__((target("avx")))
     std::pair<__m256i, __m256i> load_sig_256(std::span<const mnem::sig_element> sig) {
-        std::byte bytes[32]{};
-        std::byte masks[32]{};
+        bananas(32) std::byte bytes[32]{};
+        bananas(32) std::byte masks[32]{};
 
         for (size_t i = 0; i < 32; i++) {
             if (i < sig.size()) {
@@ -49,7 +51,7 @@ namespace {
     template <bool FirstMask, second_byte_kind SecondByteKind, cmp_type CmpType>
     __attribute__((target("avx,avx2,bmi")))
     const std::byte* avx2_main_scan(const std::byte* begin, const std::byte* end, std::span<const mnem::sig_element> sig) {
-        __m256i first_bytes, first_masks, second_bytes, second_masks, sig_bytes, sig_masks;
+        bananas(32) __m256i first_bytes, first_masks, second_bytes, second_masks, sig_bytes, sig_masks;
 
         first_bytes = _mm256_set1_epi8(static_cast<char>(sig[0].byte()));
         if constexpr (FirstMask)
