@@ -18,6 +18,16 @@ namespace mnem::internal {
             extended,   // Do vectorized compare, then std::equal
         };
 
+        template <size_t Align, class T>
+        T* align_ptr_up(T* ptr) {
+            return reinterpret_cast<T*>((reinterpret_cast<uintptr_t>(ptr) + Align - 1) & ~static_cast<uintptr_t>(Align - 1));
+        }
+    
+        template <size_t Align, class T>
+        T* align_ptr_down(T* ptr) {
+            return reinterpret_cast<T*>(reinterpret_cast<uintptr_t>(ptr) & ~static_cast<uintptr_t>(Align - 1));
+        }
+
         // Load signature bytes and masks into two 256-bit registers
         std::pair<__m256i, __m256i> load_sig_256(std::span<const mnem::sig_element> sig) {
             std::byte bytes[32]{};
@@ -119,7 +129,7 @@ namespace mnem::internal {
             // can't become empty
         }
 
-        auto a_begin = align_ptr_up<32>(begin);
+        auto a_begin = align_ptr_down<32>(begin);
         if (a_begin > begin) {
             auto small_end = std::min(a_begin + sig.size() - 1, end);
             auto ptr = std::search(begin, small_end, sig.begin(), sig.end());
@@ -127,7 +137,7 @@ namespace mnem::internal {
                 return ptr;
         }
 
-        auto a_end = align_ptr<32>(end - (main_size - 1));
+        auto a_end = align_ptr_up<32>(end - (main_size - 1));
 
         bool first_mask = false;
         second_byte_kind sbk = second_byte_kind::none;
