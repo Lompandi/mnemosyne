@@ -90,11 +90,16 @@ namespace mnem::internal {
 
                     auto match_mem = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(match + 2));
                     match_mem = _mm256_and_si256(match_mem, sig_masks);
-                    if (_mm256_movemask_epi8(_mm256_cmpeq_epi8(match_mem, sig_bytes)) == 0xFFFFFFFF) {
-                        return match;
 
-                        // TODO: extended compare
-                    }
+                    // Extended compare logic here
+                    auto extended_match = ptr + 32;
+                    auto extended_mem = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(extended_match));
+                    extended_mem = _mm256_and_si256(extended_mem, sig_masks);
+                    
+                    if (_mm256_movemask_epi8(_mm256_cmpeq_epi8(match_mem, sig_bytes)) == 0xFFFFFFFF &&
+                        _mm256_movemask_epi8(_mm256_cmpeq_epi8(extended_mem, sig_bytes)) == 0xFFFFFFFF) {
+                        return match;
+                    }   
 
                     mask = _blsr_u64(mask);
                 }
