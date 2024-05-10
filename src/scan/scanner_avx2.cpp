@@ -43,6 +43,8 @@ namespace mnem::internal {
 
         template <bool FirstMask, second_byte_kind SecondByteKind, cmp_type CmpType>
         const std::byte* avx2_main_scan(const std::byte* begin, const std::byte* end, std::span<const mnem::sig_element> sig) {
+
+            
             __m256i first_bytes, first_masks, second_bytes, second_masks, sig_bytes, sig_masks;
             std::span<const mnem::sig_element> ext_sig;
 
@@ -65,6 +67,9 @@ namespace mnem::internal {
             }
 
             for (auto ptr = begin; ptr != end; ptr += 32) {
+                const std::byte* fetch_ptr = ptr + 31;
+                if (*fetch_ptr > std::byte{22} || *fetch_ptr < std::byte{1})
+                    continue;
                 // TODO: THIS HAS ONLY BEEN TESTED ON AMD PROCESSORS!
                 // This speeds up the scan by 2-6 GB/s when the buffer is not already in the L3 cache, OR the buffer is entirely in the L1 cache.
                 // 4096 seems to be the sweet spot for prefetching, since higher values start to reduce performance instead.
