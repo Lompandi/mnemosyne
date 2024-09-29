@@ -4,12 +4,19 @@
 
 #include <immintrin.h>
 
+#include <iostream>
+
 namespace mnem::internal {
     namespace {
         enum class cmp_type {
             none,   // Fully masked or not present
             full,   // Fully unmasked
             masked  // Partially masked
+        };
+
+        enum class cmp_type_extop {
+            none,
+            instrgt, // Instruction-Based Scanning method
         };
 
         // Find the optimal index in the two-byte search.
@@ -39,6 +46,20 @@ namespace mnem::internal {
             }
 
             return best;
+        }
+
+        size_t find_maxbyte_idx(mnem::signature sig) {
+            std::byte max_byte = sig[0].byte(); // Initialize with the first byte
+            size_t idx = 0; 
+
+            for (size_t i = 1; i < sig.size(); i++) {
+                if (sig[i].byte() > max_byte) {
+                    max_byte = sig[i].byte();
+                    idx = i;
+                }
+            }
+
+            return idx; 
         }
 
         // Load signature bytes and masks into two 256-bit registers
@@ -78,9 +99,9 @@ namespace mnem::internal {
             return { bytes, masks };
         }
 
-        template <cmp_type C0, cmp_type C1, cmp_type CSig, bool SigExt>
-        const std::byte* do_scan_avx2_x1(const std::byte* begin, const std::byte* end, mnem::signature sig, size_t twobyte_idx) {
-            __m256i b0, m0, b1, m1, bsig, msig;
+        template <cmp_type C0, cmp_type C1, cmp_type CSig, bool SigExt, cmp_type_extop CExt = cmp_type_extop::none>
+        const std::byte* do_scan_avx2_x1(const std::byte* begin, const std::byte* end, mnem::signature sig, size_t twobyte_idx, size_t maxbyte_idx = 0) {
+            __m256i b0, m0, b1, m1, bsig, msig, gts, gt;
 
             {
                 b0 = _mm256_set1_epi8(static_cast<char>(sig[twobyte_idx].byte()));
@@ -163,8 +184,19 @@ namespace mnem::internal {
 
             ptr = reinterpret_cast<const std::byte*>((reinterpret_cast<uintptr_t>(ptr) | 31) + 1);
 
+            if constexpr (CExt == cmp_type_extop::instrgt) {
+                gts = _mm256_set1_epi8((char)sig[maxbyte_idx].byte());
+                gt = _mm256_loadu_si256(&gts);
+            }
+            
             for (; ptr < end; ptr += 32) {
                 auto mem = _mm256_load_si256(reinterpret_cast<const __m256i*>(ptr));
+
+                if constexpr (CExt == cmp_type_extop::instrgt) {
+                    /* Load into reg(for current test) */
+                    if (_mm256_movemask_epi8(_mm256_cmpgt_epi8(mem, gt)))
+                        continue;
+                }
 
                 uint32_t mask;
                 if constexpr (C0 == cmp_type::masked)
@@ -288,12 +320,16 @@ namespace mnem::internal {
 
     const std::byte* scan_impl_avx2_x1(const std::byte* begin, const std::byte* end, signature sig) {
         auto twobyte_idx = find_twobyte_idx(sig);
+        auto maxbyte_idx = find_maxbyte_idx(sig);
 
         if (end - begin - twobyte_idx < 64) // pretty much not worth it if the buffer is that small
             return scan_impl_normal_x1(begin, end, sig);
 
         bool c0_masked = false;
         cmp_type c1 = cmp_type::none;
+        //added extern hint for max byte(default enabled)
+        cmp_type_extop cext = cmp_type_extop::instrgt;
+        
         bool csig = false;
         bool sigext = false;
 
@@ -318,27 +354,27 @@ namespace mnem::internal {
 
         // Dispatch to the correct scanner func using epic lambda chain
         if (begin < end) {
-            auto dispatch_2 = [&]<cmp_type C0, cmp_type C1> {
+            auto dispatch_2 = [&]<cmp_type C0, cmp_type C1, cmp_type_extop CExt> {
                 if (csig) {
                     if (sigext)
-                        result = do_scan_avx2_x1<C0, C1, cmp_type::full, true>(begin, end, sig, twobyte_idx);
+                        result = do_scan_avx2_x1<C0, C1, cmp_type::full, true, CExt>(begin, end, sig, twobyte_idx, maxbyte_idx);
                     else
-                        result = do_scan_avx2_x1<C0, C1, cmp_type::full, false>(begin, end, sig, twobyte_idx);
+                        result = do_scan_avx2_x1<C0, C1, cmp_type::full, false, CExt>(begin, end, sig, twobyte_idx, maxbyte_idx);
                 } else {
-                    result = do_scan_avx2_x1<C0, C1, cmp_type::none, false>(begin, end, sig, twobyte_idx);
+                    result = do_scan_avx2_x1<C0, C1, cmp_type::none, false, CExt>(begin, end, sig, twobyte_idx, maxbyte_idx);
                 }
             };
 
             auto dispatch_1 = [&]<cmp_type C0> {
                 switch (c1) {
                     case cmp_type::none:
-                        dispatch_2.operator()<C0, cmp_type::none>();
+                        dispatch_2.operator()<C0, cmp_type::none, cmp_type_extop::instrgt>();
                         break;
                     case cmp_type::masked:
-                        dispatch_2.operator()<C0, cmp_type::masked>();
+                        dispatch_2.operator()<C0, cmp_type::masked, cmp_type_extop::instrgt >();
                         break;
                     case cmp_type::full:
-                        dispatch_2.operator()<C0, cmp_type::full>();
+                        dispatch_2.operator()<C0, cmp_type::full, cmp_type_extop::instrgt >();
                         break;
                 }
             };

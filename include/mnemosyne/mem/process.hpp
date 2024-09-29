@@ -4,6 +4,7 @@
 
 #include <string_view>
 #include <optional>
+#include <string>
 
 #include "../core/memory_range.hpp"
 
