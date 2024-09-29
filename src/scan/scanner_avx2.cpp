@@ -4,8 +4,6 @@
 
 #include <immintrin.h>
 
-#include <iostream>
-
 namespace mnem::internal {
     namespace {
         enum class cmp_type {
